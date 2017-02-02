@@ -1,0 +1,65 @@
+name:                addax
+version:             0.1
+synopsis:            A simple feed reader.
+description:
+  Addax is a simple terminal feed reader for keeping up-to-date with
+  your favorite blogs and such.
+license:             GPL-3
+license-file:        LICENSE
+author:              Robert Helgesson <robert@rycee.net>
+maintainer:          Robert Helgesson <robert@rycee.net>
+stability:           Experimental
+category:            Web
+build-type:          Simple
+cabal-version:       >= 1.10
+extra-source-files:  README.md
+
+executable addax
+  default-language:  Haskell2010
+  hs-source-dirs:    src
+  main-is:           addax.hs
+  ghc-options:       -Wall -threaded
+  build-depends:
+    annotated-wl-pprint >= 0.7 && < 1.0,
+    async == 2.*,
+    base == 4.*,
+    brick >= 0.16,
+    bytestring,
+    configurator >= 0.2,
+    containers,
+    data-default,
+    directory,
+    feed == 0.3.*,
+    filepath == 1.*,
+    http-client >= 0.4.30,
+    http-client-tls >= 0.2,
+    http-types,
+    lens,
+    monad-logger >= 0.3,
+    mtl,
+    optparse-applicative >= 0.11,
+    pandoc-types >= 1.12,
+    parsec == 3.*,
+    persistent == 2.*,
+    persistent-sqlite == 2.*,
+    persistent-template == 2.*,
+    process >= 1.2,
+    resource-pool,
+    tagsoup >= 0.12 && < 1.0,
+    text >= 0.7,
+    time == 1.*,
+    transformers >= 0.2,
+    uri == 0.1.*,
+    vector,
+    vty,
+    xdg-basedir >= 0.2.1 && < 0.3,
+    xml
+
+test-suite hspec
+  type: exitcode-stdio-1.0
+  default-language: Haskell2010
+  main-is: Spec.hs
+  hs-source-dirs: src test
+  build-depends:
+    base,
+    hspec
