@@ -22,7 +22,10 @@ module Addax.CmdLine
 
 import           Addax.About (summaryText)
 import           Addax.Interval (Interval, readInterval)
+import           Addax.Types (Feed)
 import qualified Data.Text as T
+import           Database.Persist (Key)
+import           Database.Persist.Sql (toSqlKey)
 import           Options.Applicative
 import           Text.URI (URI, parseURI)
 
@@ -33,6 +36,7 @@ data Modes =
   | Fetch
   | Import { file :: FilePath }
   | List
+  | Remove { feedId :: Key Feed }
   | Ui
   deriving (Show)
 
@@ -57,6 +61,13 @@ optAdd = command "add" (info opts mods)
     intervalR = eitherReader readInterval
     intervalOpt = option intervalR (long "interval" <> metavar "INTERVAL")
     uriR = eitherReader (maybe (Left "Invalid URL") Right . parseURI)
+
+optRemove :: Mod CommandFields Modes
+optRemove = command "remove" (info opts mods)
+  where
+    opts = Remove <$> argument keyR (metavar "FEED-ID")
+    mods = progDesc "Removes a subscribed feed and all its items"
+    keyR = toSqlKey <$> auto
 
 optList :: Mod CommandFields Modes
 optList = command "list" $
@@ -83,7 +94,15 @@ optAbout = command "about" (info opts mods)
 cmds :: ParserInfo Modes
 cmds = info (helper <*> opts) mods
   where
-    opts = hsubparser $ optUi <> optFetch <> optAdd <> optList <> optImport <> optExport <> optAbout
+    opts = hsubparser
+        $ optUi
+        <> optFetch
+        <> optAdd
+        <> optRemove
+        <> optList
+        <> optImport
+        <> optExport
+        <> optAbout
     mods = progDesc (T.unpack summaryText)
 
 addaxCmdArgs :: IO Modes

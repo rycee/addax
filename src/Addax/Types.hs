@@ -15,6 +15,7 @@
 
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -42,6 +43,7 @@ import           Database.Persist.TH
 import           Text.URI (URI, nullURI)
 
 share [ mkPersist sqlSettings { mpsGenerateLenses = True }
+      , mkDeleteCascade sqlSettings
       , mkMigrate "migrateAll"
       ] [persistLowerCase|
 
@@ -141,6 +143,13 @@ addFeed interval title url =
         $ emptyFeed
     logInfoN ("Added feed with key " <> T.pack (show key))
     return ()
+
+removeFeed :: MonadIO m => Key Feed -> SqlPersistT (LoggingT m) ()
+removeFeed key =
+  do
+    logInfoN $ "Deleting feed with key " <> T.pack (show key) <> " and all its items"
+    deleteCascade key
+    logInfoN $ "Completed delete of feed " <> T.pack (show key)
 
 getFeedWithUnreadCount :: MonadIO m => SqlPersistT m [(Entity Feed, Int)]
 getFeedWithUnreadCount =

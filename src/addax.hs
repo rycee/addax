@@ -97,6 +97,8 @@ runCmd _ (O.Import {..}) = return ()
 runCmd _ (O.Export {..}) = return ()
 runCmd _ (O.Add {..}) =
     withDb $ P.runSqlConn (addFeed interval Nothing url)
+runCmd _ (O.Remove {..}) =
+    withDb $ P.runSqlConn (removeFeed feedId)
 runCmd cfg O.List = withDb $ P.runSqlConn go
   where
     go =
