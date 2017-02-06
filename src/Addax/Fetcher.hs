@@ -59,7 +59,7 @@ import qualified Text.Feed.Types as F
 import           Text.URI (parseURI)
 import           Text.XML.Light.Proc (strContent)
 
-data UpdateEvent = Updating Feed | Updated Feed [FeedItem] | UpdateError String
+data UpdateEvent = Updating Feed | Updated Feed [FeedItem] | UpdateError Text
   deriving (Show)
 
 -- | Concurrently update all feeds that are due. Each newly updated
@@ -91,11 +91,11 @@ updateFeeds defInterval eventChan =
         return ()
 
 updateFeed :: Chan UpdateEvent
-           -> Either String (Entity Feed, F.Feed)
+           -> Either Text (Entity Feed, F.Feed)
            -> SqlPersistT (LoggingT IO) ()
 updateFeed chan = go
   where
-    go (Left err) = liftIO $ writeChan chan $ UpdateError $ "Unable to update feed: " ++ err
+    go (Left err) = liftIO $ writeChan chan $ UpdateError $ "Unable to update feed: " <> err
     go (Right (Entity feedId feed, rawFeed)) =
       do
         items <- forM (F.getFeedItems rawFeed) (updateOrInsertItem feedId)
@@ -138,7 +138,7 @@ updateFeed chan = go
         url <- m2e "missing link" $ parseURI =<< F.getItemLink item
         title <- m2e "missing title" $ F.getItemTitle item
         let author = (T.strip . T.pack) <$> F.getItemAuthor item
-            body = maybe "" T.pack (getItemBody item)
+            body = maybe "" id (getItemBody item)
             publishedAt = join (F.getItemPublishDate item)
         return FeedItem { _feedItemFeed = feedId
                         , _feedItemUrl = url
@@ -163,35 +163,38 @@ unescapeXml =
     . T.replace "&ndash;" "–"
     . T.replace "&quot;" "\""
 
-getItemBody :: F.Item -> Maybe String
-getItemBody item = maybe tryHarder Just (F.getItemSummary item)
+getItemBody :: F.Item -> Maybe Text
+getItemBody item = maybe tryHarder (Just . T.pack) (F.getItemSummary item)
   where
     tryHarder =
       case item of
         F.AtomItem i -> contentToStr <$> Atom.entryContent i
         _ -> Nothing
 
-contentToStr :: Atom.EntryContent -> String
+contentToStr :: Atom.EntryContent -> Text
 contentToStr x =
   case x of
-    Atom.TextContent  s -> T.unpack . T.replace "\n" "<br/>" . T.pack $ s
-    Atom.HTMLContent  s -> s
-    Atom.XHTMLContent s -> strContent s
-    s -> "<p>Could not interpret:</p><p>" ++ show s ++ "</p>"
+    Atom.TextContent  s -> T.replace "\n" "<br/>" . T.pack $ s
+    Atom.HTMLContent  s -> T.pack s
+    Atom.XHTMLContent s -> T.pack . strContent $ s
+    s -> "<p>Could not interpret:</p><p>" <> tshow s <> "</p>"
+
+tshow :: Show a => a -> Text
+tshow = T.pack . show
 
 -- | Simple transform from Maybe values to Either values.
 m2e :: a -> Maybe b -> Either a b
 m2e x = maybe (Left x) Right
 
-fetchFeed :: MonadIO m => H.Manager -> Entity Feed -> m (Either String (Entity Feed, F.Feed))
+fetchFeed :: MonadIO m => H.Manager -> Entity Feed -> m (Either Text (Entity Feed, F.Feed))
 fetchFeed httpManager feedEntity@(Entity _ feed) = liftIO go
   where
-    go = fetch `catch` (return . Left . (feedName ++) . err)
+    go = fetch `catch` (return . Left . (feedName <>) . T.pack . err)
 
     feedName =
-      let t = T.unpack (feed ^. feedTitle)
-          u = show (feed ^. feedUrl)
-      in  if t == "" then u ++ ": " else t ++ ": "
+      let t = feed ^. feedTitle
+          u = tshow (feed ^. feedUrl)
+      in  if t == "" then u <> ": " else t <> ": "
 
     err (H.InvalidUrlException s msg) = msg ++ s
     err (H.StatusCodeException (H.Status {..}) _ _) =

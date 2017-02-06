@@ -120,7 +120,7 @@ runCmd cfg O.List = withDb $ P.runSqlConn go
 reportDownloads :: Chan UpdateEvent -> LoggingT IO a
 reportDownloads chan = forever (liftIO (readChan chan) >>= report)
   where
-    report (UpdateError msg) = logErrorN (T.pack msg)
+    report (UpdateError msg) = logErrorN msg
     report (Updating feed) =
       let name = if feed ^. feedTitle == ""
                  then T.pack (show (feed ^. feedUrl))
