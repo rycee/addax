@@ -30,7 +30,7 @@ import           Addax.Interval (Interval(..))
 import           Addax.PersistFields ()
 import           Control.Lens
 import           Control.Monad (forM)
-import           Control.Monad.Logger (LoggingT, logInfoN)
+import           Control.Monad.Logger (MonadLoggerIO, logInfoN)
 import           Control.Monad.Trans (MonadIO, liftIO)
 import           Data.Maybe (isJust)
 import           Data.Monoid ((<>))
@@ -130,7 +130,7 @@ emptyFeed =
 
 -- | Adds a new feed with the given interval and URL. If a title is
 -- given then the title is not updated from the feed.
-addFeed :: MonadIO m => Maybe Interval -> Maybe Text -> URI -> SqlPersistT (LoggingT m) ()
+addFeed :: MonadLoggerIO m => Maybe Interval -> Maybe Text -> URI -> SqlPersistT m ()
 addFeed interval title url =
   do
     now <- liftIO getCurrentTime
@@ -144,7 +144,7 @@ addFeed interval title url =
     logInfoN ("Added feed with key " <> T.pack (show key))
     return ()
 
-removeFeed :: MonadIO m => Key Feed -> SqlPersistT (LoggingT m) ()
+removeFeed :: MonadLoggerIO m => Key Feed -> SqlPersistT m ()
 removeFeed key =
   do
     logInfoN $ "Deleting feed with key " <> T.pack (show key) <> " and all its items"

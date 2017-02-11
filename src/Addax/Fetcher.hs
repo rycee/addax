@@ -37,7 +37,7 @@ import           Control.Concurrent.Chan
 import           Control.Exception (catch)
 import           Control.Lens
 import           Control.Monad (join, forM)
-import           Control.Monad.Logger (LoggingT, logDebugN, logErrorN)
+import           Control.Monad.Logger (MonadLoggerIO, logDebugN, logErrorN)
 import           Control.Monad.Trans (MonadIO, liftIO)
 import qualified Data.ByteString.Lazy as BL
 import           Data.Maybe (catMaybes)
@@ -64,7 +64,7 @@ data UpdateEvent = Updating Feed | Updated Feed [FeedItem] | UpdateError Text
 
 -- | Concurrently update all feeds that are due. Each newly updated
 -- feed is placed on the given channel.
-updateFeeds :: Interval -> Chan UpdateEvent -> SqlPersistT (LoggingT IO) ()
+updateFeeds :: MonadLoggerIO m => Interval -> Chan UpdateEvent -> SqlPersistT m ()
 updateFeeds defInterval eventChan =
   do
     toUpdate <- feedsToUpdate defInterval True
@@ -90,9 +90,10 @@ updateFeeds defInterval eventChan =
         liftIO $ writeChan fetchChan (Just fetched)
         return ()
 
-updateFeed :: Chan UpdateEvent
+updateFeed :: MonadLoggerIO m
+           => Chan UpdateEvent
            -> Either Text (Entity Feed, F.Feed)
-           -> SqlPersistT (LoggingT IO) ()
+           -> SqlPersistT m ()
 updateFeed chan = go
   where
     go (Left err) = liftIO $ writeChan chan $ UpdateError $ "Unable to update feed: " <> err

@@ -35,7 +35,7 @@ mapConcurrentlyLog act xs =
     logger <- askLoggerIO
     liftIO $ mapConcurrently (\x -> runLoggingT (act x) logger) xs
 
-withAsyncLog :: LoggingT IO a -> (Async a -> LoggingT IO b) -> LoggingT IO b
+withAsyncLog :: MonadLoggerIO m => LoggingT IO a -> (Async a -> LoggingT IO b) -> m b
 withAsyncLog a b =
   do
     logger <- askLoggerIO

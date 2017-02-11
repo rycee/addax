@@ -35,7 +35,7 @@ import           Brick.Widgets.Html (HtmlView, htmlView, renderHtml, pvHtmlDoc, 
 import qualified Brick.Widgets.List as B
 import           Control.Lens
 import           Control.Monad (forM)
-import           Control.Monad.Logger (LoggingT)
+import           Control.Monad.Logger (MonadLoggerIO)
 import           Control.Monad.Trans (liftIO)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
@@ -584,6 +584,6 @@ populateList st =
                 . map (ListChild feed . P.entityVal)
                 $ feedItems
 
-runAddaxUi :: AddaxConfig -> SqlBackend -> LoggingT IO ()
+runAddaxUi :: MonadLoggerIO m => AddaxConfig -> SqlBackend -> m ()
 runAddaxUi cfg db =
     liftIO $ B.defaultMain addaxApp (initialState cfg db) >> return ()
