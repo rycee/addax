@@ -202,6 +202,8 @@ fetchFeed httpManager feedEntity@(Entity _ feed) = liftIO go
     err H.ResponseTimeout = "Request timed out"
     err (H.FailedConnectionException host _) =
         "Could not connect to " ++ host
+    err (H.FailedConnectionException2 host _ _ ex) =
+        "Could not connect to " ++ host ++ " (" ++ show ex ++ ")"
     err (H.TooManyRedirects _) = "Too many redirects"
     err (H.UnparseableRedirect _) = "Could not parse redirect"
     err H.TooManyRetries = "Too many retries"
