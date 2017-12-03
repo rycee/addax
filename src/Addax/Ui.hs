@@ -13,6 +13,7 @@
 -- You should have received a copy of the GNU General Public License
 -- along with Addax.  If not, see <http://www.gnu.org/licenses/>.
 
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -24,6 +25,7 @@ module Addax.Ui (runAddaxUi) where
 
 import           Addax.About (aboutText)
 import           Addax.Config
+import           Addax.Interval (readInterval)
 import           Addax.Types
 import           Brick ((<+>), (<=>))
 import qualified Brick as B
@@ -35,7 +37,7 @@ import           Brick.Widgets.Html (HtmlView, htmlView, renderHtml, pvHtmlDoc, 
 import qualified Brick.Widgets.List as B
 import           Control.Lens
 import           Control.Monad (forM)
-import           Control.Monad.Logger (MonadLoggerIO)
+import           Control.Monad.Logger (MonadLoggerIO, runNoLoggingT)
 import           Control.Monad.Trans (liftIO)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
@@ -48,6 +50,7 @@ import qualified Database.Persist.Sql as P
 import           Graphics.Vty.Attributes
 import           Graphics.Vty.Input
 import           System.Process (readProcessWithExitCode)
+import           Text.URI (URI, parseURI)
 
 data AddaxNames = IndexItemsName
                 | HtmlViewName
@@ -61,7 +64,6 @@ data AddaxNames = IndexItemsName
 
 data EditFeedState =
   EditFeedState { _editFeedFeedId :: Maybe FeedId
-                , _editFeedFeed :: Feed
                 , _editFeedDialog :: B.Dialog Bool
                 , _editFeedUrlEditor :: B.Editor Text AddaxNames
                 , _editFeedTitleEditor :: B.Editor Text AddaxNames
@@ -238,11 +240,10 @@ drawUi st = [ topBar st <=> widget (st ^. curView) ]
     widget ViewAbout = B.viewport AboutPaneName B.Both (B.txt aboutText)
     widget (ViewEditFeed eSt) = editFeedWidget eSt
 
-editFeedView :: Feed -> View
-editFeedView feed =
+editFeedView :: Maybe FeedId -> Feed -> View
+editFeedView feedId feed =
     ViewEditFeed $
-        EditFeedState { _editFeedFeedId = Nothing
-                      , _editFeedFeed = feed
+        EditFeedState { _editFeedFeedId = feedId
                       , _editFeedDialog = dlg
                       , _editFeedUrlEditor = urlEditor
                       , _editFeedTitleEditor = titleEditor
@@ -278,14 +279,22 @@ editFeedView feed =
 editFeedWidget :: EditFeedState -> B.Widget AddaxNames
 editFeedWidget (EditFeedState {..}) = B.renderDialog _editFeedDialog wdgt
   where
-    foo = B.withFocusRing _editFeedFocusRing B.renderEditor
+    form editor check =
+        (B.withFocusRing _editFeedFocusRing B.renderEditor editor)
+        <+>
+        (B.txt " ")
+        <+>
+        (B.txt $ if check (T.unpack . mconcat . B.getEditContents $ editor) then "OK" else "BAD")
     alignedTxt t = B.hLimit 16 (B.txt t <+> B.vLimit 1 (B.fill ' '))
+    urlCheck = maybe False (const True) . parseURI
+    titleCheck = const True
+    intervalCheck = either (const False) (const True) . readInterval
     wdgt =
-        (alignedTxt "Feed URL" <+> foo _editFeedUrlEditor)
+        (alignedTxt "Feed URL" <+> form _editFeedUrlEditor urlCheck)
         <=>
-        (alignedTxt "Feed title" <+> foo _editFeedTitleEditor)
+        (alignedTxt "Feed title" <+> form _editFeedTitleEditor titleCheck)
         <=>
-        (alignedTxt "Update interval" <+> foo _editFeedIntervalEditor)
+        (alignedTxt "Update interval" <+> form _editFeedIntervalEditor intervalCheck)
         <=>
         (B.vLimit 1 (B.fill ' ') <+> B.txt "Cancel (ESC) | Confirm (Enter)")
 
@@ -341,8 +350,10 @@ appEvent st ev = viewEvent (st ^. curView)
             =<< return (set indexFeedId (selectedFeed (st ^. indexItems)) st)
         B.VtyEvent (EvKey (KChar 'e') []) ->
           case st ^. (indexItems . listSelectedElementL) of
-            Just (ListHead _ feed _) -> switchView (editFeedView feed)
-            Just (ListChild feed _) -> switchView (editFeedView feed)
+            Just (ListHead feedId feed _) ->
+                switchView (editFeedView (Just feedId) feed)
+            Just (ListChild feed _) ->
+                switchView (editFeedView Nothing feed)
             Nothing -> B.continue st
         B.VtyEvent (EvKey (KChar 'n') []) -> B.continue =<< gotoNextUnread st
         B.VtyEvent (EvKey (KChar 'o') []) ->
@@ -392,8 +403,27 @@ appEvent st ev = viewEvent (st ^. curView)
           --   eSt' <- B.handleEventLensed eSt editFeedDialog B.handleEditorEvent ev
           --   B.continue $ set curView (ViewEditFeed eSt') st
 
-editFeedUpdateFeed :: a -> UiState -> IO UiState
-editFeedUpdateFeed eSt = return . set curView ViewIndex
+editFeedUpdateFeed :: EditFeedState -> UiState -> IO UiState
+editFeedUpdateFeed eSt st =
+  case validated of
+    Left msg -> putStrLn msg >> return st
+    Right work -> work >> return (set curView ViewIndex st)
+  where
+    validated =
+      do
+        url <- maybe (Left "Invalid URL") Right . parseURI $ urlText
+        return $ worker url
+
+    urlText = T.unpack $ mconcat $ B.getEditContents (eSt ^. editFeedUrlEditor)
+
+    worker :: URI -> IO ()
+    worker url = runNoLoggingT $ P.runSqlConn (sql url) (st ^. sqlBackend)
+
+    sql :: MonadLoggerIO m => URI -> P.SqlPersistT m ()
+    sql url =
+      case (eSt ^. editFeedFeedId) of
+        Nothing -> addFeed Nothing Nothing url
+        Just feedId -> P.update feedId [ FeedUrl P.=. url ]
 
 -- handleIndexItemsEvent :: Event -> UiState -> EventM n UiState
 -- handleIndexItemsEvent 
