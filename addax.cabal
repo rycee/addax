@@ -23,7 +23,7 @@ executable addax
     annotated-wl-pprint >= 0.7 && < 1.0,
     async == 2.*,
     base == 4.*,
-    brick >= 0.16,
+    brick >= 0.17,
     bytestring,
     configurator >= 0.2,
     containers,

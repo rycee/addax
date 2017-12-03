@@ -33,12 +33,10 @@ import qualified Brick as B
 import           Control.Lens
 import           Control.Monad.State.Strict
 import           Data.Char (isPunctuation, isSpace)
-import           Data.Default (def)
 import           Data.Monoid
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Graphics.Vty as V
-import           Graphics.Vty.Picture
 import           Text.HTML.TagSoup
 import           Text.HTML.TagSoup.Tree hiding (renderTree)
 import           Text.PrettyPrint.Annotated.Leijen ((<+>), (</>))
@@ -135,15 +133,15 @@ renderHtml pv =
               then PP.string $ T.unpack (pv ^. pvRawDoc)
               else renderTrees (pv ^. pvDoc)
         img <- fmap (V.vertCat . map V.horizCat) (renderDoc blocks)
-        return $ set B.imageL img def
+        return $ set B.imageL img B.emptyResult
 
-renderDoc :: PP.Doc HtmlAnnotation -> B.RenderM n [[Image]]
+renderDoc :: PP.Doc HtmlAnnotation -> B.RenderM n [[V.Image]]
 renderDoc doc =
   do
     context <- B.getContext
     let lim = context ^. B.availWidthL
         simpleDoc = dropInitialWhiteSpace $ PP.renderPretty 1.0 lim doc
-    go [] [def] simpleDoc [] []
+    go [] [mempty] simpleDoc [] []
   where
     go _ [] _ _ _ = error "impossible 1"
     go stk attrs@(attr:_) docElem row ls =
