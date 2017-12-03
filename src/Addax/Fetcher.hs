@@ -197,17 +197,20 @@ fetchFeed httpManager feedEntity@(Entity _ feed) = liftIO go
       in  if t == "" then u <> ": " else t <> ": "
 
     err (H.InvalidUrlException s msg) = msg ++ s
-    err (H.StatusCodeException (H.Status {..}) _ _) =
-        "Got status " ++ show statusCode ++ " " ++ show statusMessage
-    err H.ResponseTimeout = "Request timed out"
-    err (H.FailedConnectionException host _) =
-        "Could not connect to " ++ host
-    err (H.FailedConnectionException2 host _ _ ex) =
-        "Could not connect to " ++ host ++ " (" ++ show ex ++ ")"
-    err (H.TooManyRedirects _) = "Too many redirects"
-    err (H.UnparseableRedirect _) = "Could not parse redirect"
-    err H.TooManyRetries = "Too many retries"
-    err e = show e
+    err (H.HttpExceptionRequest _ ex) = reqErr ex
+
+    reqErr (H.StatusCodeException resp _) =
+      let
+        status = H.responseStatus resp
+        code = show . H.statusCode $ status
+        message = show . H.statusMessage $ status
+      in
+        "Got status " ++ code ++ " " ++ message
+    reqErr H.ResponseTimeout = "Request timed out"
+    reqErr (H.ConnectionFailure ex) =
+        "Connection error " ++ show ex
+    reqErr (H.TooManyRedirects _) = "Too many redirects"
+    reqErr e = show e
 
     fetch =
       do
