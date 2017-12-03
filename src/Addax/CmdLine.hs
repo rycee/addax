@@ -23,6 +23,7 @@ module Addax.CmdLine
 import           Addax.About (summaryText)
 import           Addax.Interval (Interval, readInterval)
 import           Addax.Types (Feed)
+import           Data.Monoid ((<>))
 import qualified Data.Text as T
 import           Database.Persist (Key)
 import           Database.Persist.Sql (toSqlKey)
