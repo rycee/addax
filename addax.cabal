@@ -29,7 +29,7 @@ executable addax
     containers,
     data-default,
     directory,
-    feed == 0.3.*,
+    feed == 1.*,
     filepath == 1.*,
     http-client >= 0.4.30,
     http-client-tls >= 0.2,
@@ -53,7 +53,7 @@ executable addax
     vector,
     vty,
     xdg-basedir >= 0.2.1 && < 0.3,
-    xml
+    xml-types
 
 test-suite hspec
   type: exitcode-stdio-1.0

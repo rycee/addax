@@ -39,14 +39,14 @@ import           Control.Lens
 import           Control.Monad (join, forM)
 import           Control.Monad.Logger (MonadLoggerIO, logDebugN, logErrorN)
 import           Control.Monad.Trans (MonadIO, liftIO)
-import qualified Data.ByteString.Lazy as BL
 import           Data.Maybe (catMaybes)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
 import qualified Data.Text.Encoding.Error as T hiding (replace)
+import qualified Data.Text.Lazy.Encoding as TL
 import           Data.Time (getCurrentTime)
+import Data.XML.Types (elementText)
 import           Database.Persist
 import           Database.Persist.Sql
 import qualified Network.HTTP.Client as H
@@ -57,7 +57,6 @@ import qualified Text.Feed.Import as F
 import qualified Text.Feed.Query as F
 import qualified Text.Feed.Types as F
 import           Text.URI (parseURI)
-import           Text.XML.Light.Proc (strContent)
 
 data UpdateEvent = Updating Feed | Updated Feed [FeedItem] | UpdateError Text
   deriving (Show)
@@ -100,8 +99,8 @@ updateFeed chan = go
     go (Right (Entity feedId feed, rawFeed)) =
       do
         items <- forM (F.getFeedItems rawFeed) (updateOrInsertItem feedId)
-        let title = T.strip . T.pack . F.getFeedTitle $ rawFeed
-            website = parseURI =<< F.getFeedHTML rawFeed
+        let title = T.strip . F.getFeedTitle $ rawFeed
+            website = parseURI . T.unpack =<< F.getFeedHTML rawFeed
         now <- liftIO getCurrentTime
         feed' <- updateGet feedId $
             [ FeedWebsite =. website
@@ -136,14 +135,14 @@ updateFeed chan = go
 
     buildFeedItem now feedId item =
       do
-        url <- m2e "missing link" $ parseURI =<< F.getItemLink item
+        url <- m2e "missing link" $ parseURI . T.unpack =<< F.getItemLink item
         title <- m2e "missing title" $ F.getItemTitle item
-        let author = (T.strip . T.pack) <$> F.getItemAuthor item
+        let author = T.strip <$> F.getItemAuthor item
             body = maybe "" id (getItemBody item)
             publishedAt = join (F.getItemPublishDate item)
         return FeedItem { _feedItemFeed = feedId
                         , _feedItemUrl = url
-                        , _feedItemTitle = unescapeXml . T.strip . T.pack $ title
+                        , _feedItemTitle = unescapeXml . T.strip $ title
                         , _feedItemAuthor = author
                         , _feedItemBody = body
                         , _feedItemPublishedAt = publishedAt
@@ -165,7 +164,7 @@ unescapeXml =
     . T.replace "&quot;" "\""
 
 getItemBody :: F.Item -> Maybe Text
-getItemBody item = maybe tryHarder (Just . T.pack) (F.getItemSummary item)
+getItemBody item = maybe tryHarder Just (F.getItemSummary item)
   where
     tryHarder =
       case item of
@@ -175,9 +174,9 @@ getItemBody item = maybe tryHarder (Just . T.pack) (F.getItemSummary item)
 contentToStr :: Atom.EntryContent -> Text
 contentToStr x =
   case x of
-    Atom.TextContent  s -> T.replace "\n" "<br/>" . T.pack $ s
-    Atom.HTMLContent  s -> T.pack s
-    Atom.XHTMLContent s -> T.pack . strContent $ s
+    Atom.TextContent  s -> T.replace "\n" "<br/>" s
+    Atom.HTMLContent  s -> s
+    Atom.XHTMLContent s -> T.concat . elementText $ s
     s -> "<p>Could not interpret:</p><p>" <> tshow s <> "</p>"
 
 tshow :: Show a => a -> Text
@@ -218,7 +217,7 @@ fetchFeed httpManager feedEntity@(Entity _ feed) = liftIO go
           then updateFeed' (H.responseBody response)
           else return $ Left "Invalid response"
 
-    decodeBody = T.decodeUtf8With T.lenientDecode . BL.toStrict
+    decodeBody = TL.decodeUtf8With T.lenientDecode
 
     updateFeed' body =
       case F.parseFeedSource (decodeBody body) of
