@@ -33,12 +33,13 @@ import qualified Brick.Focus as B
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Dialog as B
 import qualified Brick.Widgets.Edit as B
-import           Brick.Widgets.Html (HtmlView, htmlView, renderHtml, pvHtmlDoc, pvShowRaw)
 import qualified Brick.Widgets.List as B
+import qualified Brick.Widgets.Pandoc as BP
 import           Control.Lens
 import           Control.Monad (forM)
 import           Control.Monad.Logger (MonadLoggerIO, runNoLoggingT)
 import           Control.Monad.Trans (liftIO)
+import Data.Default (def)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -50,10 +51,11 @@ import qualified Database.Persist.Sql as P
 import           Graphics.Vty.Attributes
 import           Graphics.Vty.Input
 import           System.Process (readProcessWithExitCode)
+import qualified Text.Pandoc.Builder as PB
+import Text.Pandoc.Readers.HTML (readHtml)
 import           Text.URI (URI, parseURI)
 
 data AddaxNames = IndexItemsName
-                | HtmlViewName
                 | ItemBodyName
                 | AboutPaneName
 
@@ -100,7 +102,7 @@ data UiState =
           , _indexItems :: B.List AddaxNames Item
 
             -- | Body currently being displayed in the index.
-          , _indexBody :: HtmlView AddaxNames
+          , _indexBody :: BP.PandocView AddaxNames
           }
 
 makeLenses ''UiState
@@ -180,7 +182,6 @@ indexWidget st = indexList <=> body <=> indexBar
 
     body =
         B.border
-        . B.viewport ItemBodyName B.Vertical
         $ bodyWidget st (B.listSelectedElement (st ^. indexItems))
 
 listSelectedElementL :: Getter (B.List n e) (Maybe e)
@@ -194,37 +195,7 @@ vpAboutScroll = B.viewportScroll AboutPaneName
 
 bodyWidget :: UiState -> Maybe (Int, Item) -> B.Widget AddaxNames
 bodyWidget _ Nothing = B.txt "Press 'a' to add a feed…"
-bodyWidget st (Just (_, ListHead _ feed numUnread)) =
-    headerFmt "Feed title" (empty "Unknown" $ feed ^. feedTitle)
-    <=>
-    headerFmt "Feed URL" (tshow $ feed ^. feedUrl)
-    <=>
-    headerFmt "Last updated" (maybe "Never" tshow $ feed ^. feedUpdatedAt)
-    <=>
-    headerFmt "Update interval" (tshow $ feedIntervalWithDefault defInterval feed)
-    <=>
-    headerFmt "Next update" (tshow $ feedNextUpdateAt defInterval feed)
-    <=>
-    headerFmt "Number of unread items" (tshow numUnread)
-  where
-    defInterval = st ^. (config . confDefaultInterval)
-    empty d x = if x == "" then d else x
-bodyWidget st (Just (_, ListChild _ feedItem)) =
-    headerFmt "Title" (feedItem ^. feedItemTitle)
-    <=?>
-    headerFmtM "Author" (feedItem ^. feedItemAuthor)
-    <=?>
-    headerFmtM "Published" (tshow <$> feedItem ^. feedItemPublishedAt)
-    <=>
-    headerFmt "Downloaded" (tshow $ feedItem ^. feedItemDownloadedAt)
-    <=>
-    B.hBorder
-    <=>
-    renderHtml (st ^. indexBody)
-
-(<=?>) :: B.Widget n -> Maybe (B.Widget n) -> B.Widget n
-a <=?> Just b = a <=> b
-a <=?> Nothing = a
+bodyWidget st _ = BP.renderPandocView (st ^. indexBody)
 
 headerFmt :: Text -> Text -> B.Widget n
 headerFmt key val = B.txt key <+> B.txt ": " <+> B.txt val
@@ -361,7 +332,7 @@ appEvent st ev = viewEvent (st ^. curView)
             liftIO $ openSelectedItem (st ^. indexItems)
             B.continue st
         B.VtyEvent (EvKey (KChar 'r') []) ->
-            B.continue $ over (indexBody . pvShowRaw) not st
+            B.continue $ over (indexBody . BP.pvShowRawL) not st
         B.VtyEvent (EvKey KBS []) ->
             B.vScrollPage vpItemBodyScroll B.Up >> B.continue st
         B.VtyEvent (EvKey (KChar ' ') []) ->
@@ -472,8 +443,36 @@ updateHtmlView :: UiState -> UiState
 updateHtmlView st =
   case B.listSelectedElement (st ^. indexItems) of
     Nothing -> st
-    Just (_, ListHead _ _ _) -> set (indexBody . pvHtmlDoc) "" st
-    Just (_, ListChild _ feedItem) -> set (indexBody . pvHtmlDoc) (feedItem ^. feedItemBody) st
+    Just (_, ListHead _ feed numUnread) -> setBody (feedBody feed numUnread)
+    Just (_, ListChild _ feedItem) -> setBody (itemBody feedItem) -- . loadHtml $ feedItem ^. feedItemBody
+  where
+    header hs = PB.doc $ PB.definitionList hs <> PB.horizontalRule
+    headerFmt title body = [ (PB.str title, [PB.para . PB.text . T.unpack $ body]) ]
+    headerFmtM title = maybe [] (headerFmt title)
+
+    defInterval = st ^. (config . confDefaultInterval)
+    empty d x = if x == "" then d else x
+
+    feedBody feed numUnread =
+        header
+        $ headerFmt "Feed title" (empty "Unknown" $ feed ^. feedTitle)
+        <> headerFmt "Feed URL" (tshow $ feed ^. feedUrl)
+        <> headerFmt "Last updated" (maybe "Never" tshow $ feed ^. feedUpdatedAt)
+        <> headerFmt "Update interval" (tshow $ feedIntervalWithDefault defInterval feed)
+        <> headerFmt "Next update" (tshow $ feedNextUpdateAt defInterval feed)
+        <> headerFmt "Number of unread items" (tshow numUnread)
+
+    itemInfo feedItem =
+        header
+        $ headerFmt "Title" (feedItem ^. feedItemTitle)
+        <> headerFmtM "Author" (feedItem ^. feedItemAuthor)
+        <> headerFmtM "Published" (tshow <$> feedItem ^. feedItemPublishedAt)
+        <> headerFmt "Downloaded" (tshow $ feedItem ^. feedItemDownloadedAt)
+    itemBody feedItem = itemInfo feedItem <> loadHtml (feedItem ^. feedItemBody)
+
+    setBody doc = set (indexBody . BP.pvDocL) doc st
+    showError = PB.doc . PB.para . PB.text . show
+    loadHtml = either showError id . readHtml def . T.unpack
 
 -- | Opens the selected item. If it is a feed then open the feed web
 -- URL and if it is a feed item, open the item URL.
@@ -522,17 +521,18 @@ nextUnreadFeed lst = bleh listHead
 
 attrMap :: UiState -> B.AttrMap
 attrMap _ = B.attrMap defAttr
-    [ (B.listSelectedAttr,    black `B.on` white)
-    , (B.buttonAttr,          white `B.on` blue)
-    , (B.buttonSelectedAttr,  blue `B.on` white)
-    , (itemUnread,            B.fg brightWhite)
-    , ("html" <> "link",      B.fg blue)
-    , ("html" <> "em",        B.fg brightWhite)
-    , ("html" <> "pre",       B.fg green)
-    , ("html" <> "code",      B.fg green)
-    , ("html" <> "h1",        B.fg brightWhite)
-    , ("html" <> "h2",        B.fg brightWhite)
-    , ("html" <> "h3",        B.fg brightWhite)
+    [ (B.listSelectedAttr,          black `B.on` white)
+    , (B.buttonAttr,                white `B.on` blue)
+    , (B.buttonSelectedAttr,        blue `B.on` white)
+    , (itemUnread,                  B.fg brightWhite)
+    , (BP.pandocStyleLinkAttr,      B.fg blue)
+    , (BP.pandocStyleEmphAttr,      B.fg brightWhite)
+    , (BP.pandocStyleCodeAttr,      B.fg green)
+    , (BP.pandocStyleCodeBlockAttr, B.fg green)
+    , (BP.pandocStyleHeader1Attr,   B.fg brightWhite)
+    , (BP.pandocStyleHeader2Attr,   B.fg brightWhite)
+    , (BP.pandocStyleHeader3Attr,   B.fg brightWhite)
+    , (BP.pandocStyleHorizRuleAttr, B.fg black)
     ]
 
 appCursor :: UiState -> [B.CursorLocation AddaxNames] -> Maybe (B.CursorLocation AddaxNames)
@@ -562,7 +562,7 @@ initialState cfg backend =
             , _numUpdateDue = 0
             , _indexFeedId = Nothing
             , _indexItems = B.list IndexItemsName mempty 1
-            , _indexBody = htmlView HtmlViewName
+            , _indexBody = BP.pandocView ItemBodyName
             }
 
 selectItem :: FeedItem -> UiState -> UiState
