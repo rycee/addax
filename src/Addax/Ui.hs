@@ -222,7 +222,6 @@ editFeedView feedId feed =
                       , _editFeedFocusRing = focusRing
                       }
   where
-    -- (feedId, feed) = maybe (Nothing, emptyFeed) id $ mfeed
     dlg = B.dialog (Just "Edit feed") dlgBtns 50
     dlgBtns = Nothing -- Just (0, [("Add", True), ("Cancel", False)])
     lnrndr = B.txt . T.concat
