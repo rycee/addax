@@ -36,7 +36,7 @@ import qualified Brick.Widgets.Edit as B
 import qualified Brick.Widgets.List as B
 import qualified Brick.Widgets.Pandoc as BP
 import           Control.Lens
-import           Control.Monad (forM)
+import           Control.Monad (forM, void, when)
 import           Control.Monad.Logger (MonadLoggerIO, runNoLoggingT)
 import           Control.Monad.Trans (liftIO)
 import Data.Default (def)
@@ -54,6 +54,7 @@ import           System.Process (readProcessWithExitCode)
 import qualified Text.Pandoc.Builder as PB
 import Text.Pandoc.Readers.HTML (readHtml)
 import           Text.URI (URI, parseURI)
+import Web.Browser (openBrowser)
 
 data AddaxNames = IndexItemsName
                 | ItemBodyName
@@ -307,6 +308,17 @@ appEvent st ev = viewEvent (st ^. curView)
         _ -> handleStandardEvents
     viewEvent ViewIndex =
       case ev of
+        -- Handle Pandoc widget link selection.
+        B.VtyEvent (EvKey (KChar '.') []) -> B.continue . (indexBody . BP.pvLinkEntryL %~ not) $ st
+        B.VtyEvent (EvKey key [])
+          | st ^. (indexBody . BP.pvLinkEntryL) ->
+            do
+              let s = st ^. indexBody
+                  (links, s') = BP.pvLinkIdEnterKey key s
+              when (not (s' ^. BP.pvLinkEntryL || null links))
+                $ void . liftIO . openBrowser . T.unpack . head $ links
+              B.continue $ set indexBody s' st
+
         B.VtyEvent (EvKey KRight []) ->
           case st ^. (indexItems . listSelectedElementL) of
             Just (ListHead feedKey _ _) ->
@@ -520,18 +532,19 @@ nextUnreadFeed lst = bleh listHead
 
 attrMap :: UiState -> B.AttrMap
 attrMap _ = B.attrMap defAttr
-    [ (B.listSelectedAttr,          black `B.on` white)
-    , (B.buttonAttr,                white `B.on` blue)
-    , (B.buttonSelectedAttr,        blue `B.on` white)
-    , (itemUnread,                  B.fg brightWhite)
-    , (BP.pandocStyleLinkAttr,      B.fg blue)
-    , (BP.pandocStyleEmphAttr,      B.fg brightWhite)
-    , (BP.pandocStyleCodeAttr,      B.fg green)
-    , (BP.pandocStyleCodeBlockAttr, B.fg green)
-    , (BP.pandocStyleHeader1Attr,   B.fg brightWhite)
-    , (BP.pandocStyleHeader2Attr,   B.fg brightWhite)
-    , (BP.pandocStyleHeader3Attr,   B.fg brightWhite)
-    , (BP.pandocStyleHorizRuleAttr, B.fg black)
+    [ (B.listSelectedAttr,           black `B.on` white)
+    , (B.buttonAttr,                 white `B.on` blue)
+    , (B.buttonSelectedAttr,         blue `B.on` white)
+    , (itemUnread,                   B.fg brightWhite)
+    , (BP.pandocStyleLinkAttr,       B.fg blue)
+    , (BP.pandocStyleLinkHandleAttr, blue `B.on` brightRed)
+    , (BP.pandocStyleEmphAttr,       B.fg brightWhite)
+    , (BP.pandocStyleCodeAttr,       B.fg green)
+    , (BP.pandocStyleCodeBlockAttr,  B.fg green)
+    , (BP.pandocStyleHeader1Attr,    B.fg brightWhite)
+    , (BP.pandocStyleHeader2Attr,    B.fg brightWhite)
+    , (BP.pandocStyleHeader3Attr,    B.fg brightWhite)
+    , (BP.pandocStyleHorizRuleAttr,  B.fg black)
     ]
 
 appCursor :: UiState -> [B.CursorLocation AddaxNames] -> Maybe (B.CursorLocation AddaxNames)
