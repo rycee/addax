@@ -495,10 +495,7 @@ openSelectedItem lst = maybe (return ()) (spawn . show) murl
         Just (_, ListHead _ feed _) -> Just (feed ^. feedUrl)
         Just (_, ListChild _ feedItem) -> Just (feedItem ^. feedItemUrl)
         Nothing -> Nothing
-    spawn url =
-      do
-        (_, _, _) <- readProcessWithExitCode "xdg-open" [url] ""
-        return ()
+    spawn = void . openBrowser
 
 gotoNextUnread :: UiState -> B.EventM AddaxNames UiState
 gotoNextUnread st =
