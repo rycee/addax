@@ -39,7 +39,7 @@ import           Control.Lens
 import           Control.Monad (forM, void, when)
 import           Control.Monad.Logger (MonadLoggerIO, runNoLoggingT)
 import           Control.Monad.Trans (liftIO)
-import Data.Default (def)
+import           Data.Default (def)
 import           Data.Monoid ((<>))
 import           Data.Text (Text)
 import qualified Data.Text as T
@@ -51,10 +51,10 @@ import qualified Database.Persist.Sql as P
 import           Graphics.Vty.Attributes
 import           Graphics.Vty.Input
 import           System.Process (readProcessWithExitCode)
+import qualified Text.Pandoc as Pandoc
 import qualified Text.Pandoc.Builder as PB
-import Text.Pandoc.Readers.HTML (readHtml)
 import           Text.URI (URI, parseURI)
-import Web.Browser (openBrowser)
+import           Web.Browser (openBrowser)
 
 data AddaxNames = IndexItemsName
                 | ItemBodyName
@@ -483,7 +483,7 @@ updateHtmlView st =
 
     setBody doc = set (indexBody . BP.pvDocL) doc st
     showError = PB.doc . PB.para . PB.text . show
-    loadHtml = either showError id . readHtml def . T.unpack
+    loadHtml = either showError id . Pandoc.runPure . Pandoc.readHtml def
 
 -- | Opens the selected item. If it is a feed then open the feed web
 -- URL and if it is a feed item, open the item URL.
