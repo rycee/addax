@@ -225,21 +225,16 @@ editFeedView feedId feed =
   where
     dlg = B.dialog (Just "Edit feed") dlgBtns 50
     dlgBtns = Nothing -- Just (0, [("Add", True), ("Cancel", False)])
-    lnrndr = B.txt . T.concat
-    rndrDef = B.txt "[Default]"
     urlEditor =
         B.editor UrlEditorName
-                 lnrndr
                  (Just 1)
                  (tshow $ feed ^. feedUrl)
     titleEditor =
         B.editor TitleEditorName
-                 lnrndr
                  (Just 1)
                  (feed ^. feedTitle)
     intervalEditor =
         B.editor IntervalEditorName
-                 (\ ls -> if null ls then rndrDef else lnrndr ls)
                  (Just 1)
                  (maybe "" tshow $ feed ^. feedUpdateInterval)
     focusRing = B.focusRing [ UrlEditorName
@@ -250,8 +245,10 @@ editFeedView feedId feed =
 editFeedWidget :: EditFeedState -> B.Widget AddaxNames
 editFeedWidget (EditFeedState {..}) = B.renderDialog _editFeedDialog wdgt
   where
-    form editor check =
-        (B.withFocusRing _editFeedFocusRing B.renderEditor editor)
+    lnrndr = B.txt . T.concat
+    rndrDef = (\ ls -> if null ls then B.txt "[Default]" else lnrndr ls)
+    form editor rndr check =
+        (B.withFocusRing _editFeedFocusRing (B.renderEditor rndr) editor)
         <+>
         (B.txt " ")
         <+>
@@ -261,11 +258,11 @@ editFeedWidget (EditFeedState {..}) = B.renderDialog _editFeedDialog wdgt
     titleCheck = const True
     intervalCheck = either (const False) (const True) . readInterval
     wdgt =
-        (alignedTxt "Feed URL" <+> form _editFeedUrlEditor urlCheck)
+        (alignedTxt "Feed URL" <+> form _editFeedUrlEditor lnrndr urlCheck)
         <=>
-        (alignedTxt "Feed title" <+> form _editFeedTitleEditor titleCheck)
+        (alignedTxt "Feed title" <+> form _editFeedTitleEditor lnrndr titleCheck)
         <=>
-        (alignedTxt "Update interval" <+> form _editFeedIntervalEditor intervalCheck)
+        (alignedTxt "Update interval" <+> form _editFeedIntervalEditor rndrDef intervalCheck)
         <=>
         (B.vLimit 1 (B.fill ' ') <+> B.txt "Cancel (ESC) | Confirm (Enter)")
 
