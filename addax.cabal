@@ -37,7 +37,7 @@ executable addax
     brick >= 0.29,
     brick-widgets-pandoc,
     bytestring,
-    configurator >= 0.2,
+    config-ini,
     containers,
     data-default,
     directory,

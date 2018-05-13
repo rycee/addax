@@ -16,14 +16,17 @@
 module Addax.Interval
   ( Interval(..)
   , readInterval
+  , readIntervalText
   ) where
 
-import Control.Monad (when)
-import Text.Parsec
-import Text.Parsec.String (Parser)
-import Data.Time (DiffTime)
-import Data.Char (digitToInt)
-import Data.Foldable (foldl')
+import           Control.Monad (when)
+import           Data.Char (digitToInt)
+import           Data.Foldable (foldl')
+import           Data.Text (Text)
+import qualified Data.Text as T
+import           Data.Time (DiffTime)
+import           Text.Parsec
+import           Text.Parsec.String (Parser)
 
 -- | A time interval with one second precision.
 newtype Interval = Interval DiffTime
@@ -74,3 +77,6 @@ readInterval :: String -> Either String Interval
 readInterval =
     either (Left . show) (Right . Interval)
     . runParser parseInterval () ""
+
+readIntervalText :: Text -> Either String Interval
+readIntervalText = readInterval . T.unpack

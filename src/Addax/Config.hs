@@ -22,15 +22,18 @@ module Addax.Config
        , confDefaultInterval
        , confExpireInterval
        , confExpireUnread
-       , confOpenCommand
        , confFetchTimeout
        , loadConfig
        ) where
 
-import Addax.Interval
-import Control.Lens
-import Data.Configurator
-import Data.Text (Text)
+import           Addax.Interval
+import           Control.Lens
+import           Data.Ini.Config
+import           Data.Monoid ((<>))
+import qualified Data.Text.IO as T
+import           System.Directory (doesFileExist)
+import           System.Exit
+import           System.IO
 
 data AddaxConfig =
   AddaxConfig {
@@ -45,9 +48,6 @@ data AddaxConfig =
     -- | Whether to expire unread items.
     , _confExpireUnread :: !Bool
 
-    -- | Command to use when opening links, default is @xdg-open@.
-    , _confOpenCommand :: !Text
-
     -- | Length of the HTTP response timeout.
     , _confFetchTimeout :: !Interval
   }
@@ -55,36 +55,27 @@ data AddaxConfig =
 
 makeLenses ''AddaxConfig
 
--- -- | Produces a string representation of the given configuration.
--- configToString :: Config -> Either CPError String
--- configToString Config {..} =
---   do let cp = emptyCP
---      cp <- add_section cp "config"
---      cp <- set cp "config" "default-interval" (show defaultInterval)
---      cp <- set cp "config" "expire-interval" (show expireInterval)
---      cp <- set cp "config" "expire-unread" (show expireUnread)
---      return . to_string $ cp
+configParser :: IniParser AddaxConfig
+configParser =
+  section "addax"
+  $ AddaxConfig
+      <$> (fieldDefOf "default-interval" readIntervalText (read "12h"))
+      <*> (fieldDefOf "expire-after"     readIntervalText (read "4w"))
+      <*> (fieldFlagDef "expire-unread" False)
+      <*> (fieldDefOf "fetch-timeout"    readIntervalText (read "20s"))
 
 -- | Loads an Addax configuration.  If no prior configuration file
 -- could be found then returns `defaultConfig`.
 loadConfig :: FilePath -> IO AddaxConfig
 loadConfig cfgPath =
   do
-    cfg <- load [Optional cfgPath]
-    AddaxConfig
-      <$> (read <$> lookupDefault "12h" cfg "default-interval")
-      <*> (read <$> lookupDefault "4w" cfg "expire-after")
-      <*> lookupDefault False cfg "expire-unread"
-      <*> lookupDefault "xdg-open" cfg "open-command"
-      <*> (read <$> lookupDefault "20s" cfg "fetch-timeout")
+    cfgExists <- doesFileExist cfgPath
+    ini <- if cfgExists then T.readFile cfgPath else return defaultFile
+    either handleError return (parseIniFile ini configParser)
+  where
+    defaultFile = "[addax]\n"
 
--- -- | Saves an Addax configuration into the standard user configuration
--- -- file.  Note, if the given configuration is the same as the
--- -- `defaultConfig` then no file is written.
--- saveConfig :: Config -> IO ()
--- saveConfig config | config == defaultConfig = return ()
---                   | otherwise =
---   do file <- configFile
---      case configToString config of
---        Left (err, loc) -> hPutStrLn stderr $ loc ++ ": " ++ show err
---        Right str -> writeFile file str
+    handleError msg =
+      do
+        hPutStrLn stderr $ "Error reading config file " <> cfgPath <> ": " <> msg
+        exitFailure
