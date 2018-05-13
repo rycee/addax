@@ -31,7 +31,6 @@ executable addax
     Addax.Ui,
     Paths_addax
   build-depends:
-    annotated-wl-pprint >= 0.7 && < 1.0,
     async == 2.*,
     base == 4.*,
     brick >= 0.29,
