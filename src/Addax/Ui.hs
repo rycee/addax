@@ -50,7 +50,6 @@ import           Database.Persist.Sql (SqlBackend)
 import qualified Database.Persist.Sql as P
 import           Graphics.Vty.Attributes
 import           Graphics.Vty.Input
-import           System.Process (readProcessWithExitCode)
 import qualified Text.Pandoc as Pandoc
 import qualified Text.Pandoc.Builder as PB
 import           Text.URI (URI, parseURI)
